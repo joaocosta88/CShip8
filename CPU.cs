@@ -16,7 +16,7 @@ namespace c_ip8
         public byte DelayTimer;
         public byte SoundTimer;
         public byte Input;
-        public byte[] Display = new byte[DISPLAY_WIDTH * DISPLAY_HEIGHT];
+        public byte[,] Display = new byte[DISPLAY_WIDTH,DISPLAY_HEIGHT];
 
         private Random rndGenerator = new Random(Environment.TickCount);
         public void ExecuteOpCode(ushort opCode)
@@ -26,9 +26,11 @@ namespace c_ip8
                 case 0x0000:
                     if (opCode == 0x00E0)
                     { //clear screen
-                        for (int i = 0; i < Display.Length; i++)
+                        for (int i = 0; i < DISPLAY_WIDTH; i++)
                         {
-                            Display[i] = 0;
+                            for(int j = 0; j < DISPLAY_HEIGHT; j++) {
+                                Display[i, j] = 0;
+                            }
                         }
                     }
                     else if (opCode == 0x00EE)
@@ -117,6 +119,26 @@ namespace c_ip8
                 case 0xC000:
                     var rnd = rndGenerator.Next(256);
                     V[opCode & 0x0F00] = (byte)(rnd & (opCode & 0x00FF));
+                    break;
+                case 0xD000: //TODO: this is probably wrong
+                    V[15] = 0;
+                    var px = opCode & 0x0F00 >> 8;
+                    var py = opCode & 0x00F0 >> 4;
+                    var spriteSize = opCode & 0x000F;
+
+                    for(int i = 0; i < spriteSize; i++) {
+                        var spriteToLoad = RAM[I+i];
+
+                        for(int j = 0; j < 8; j++) {
+                            //7-j -> MSB is leftmost bit
+                            //0x01 -> get a single bit value
+                            byte currentPixelToBeLoaded = (byte) ((spriteToLoad >> (7-j)) & 0x01);
+                            if (currentPixelToBeLoaded == 1 && Display[px + j, py] == 1) {
+                                V[15] = 1;
+                            }
+                            Display[px + j, py] = (byte) (Display[px + j, py] ^ currentPixelToBeLoaded);
+                        }
+                    }
                     break;
                 default:
                     Console.WriteLine($"unknown opcode {opCode.ToString("X4")}");
