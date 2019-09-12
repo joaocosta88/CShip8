@@ -18,9 +18,25 @@ namespace c_ip8
         public byte Input;
         public byte[,] Display = new byte[DISPLAY_WIDTH, DISPLAY_HEIGHT];
 
+        public void LoadProgram(ushort[] program) {
+            RAM = new byte[4096];
+            
+            for(int i = 0; i < program.Length; i++) {
+                //according to documentation, chip 8 start at memory location 512
+                //the positions before 512 were reserved to the original interpreter
+
+                // position is multiplied by two since each instruction is two bytes
+                RAM[512 + i * 2]  = (byte) ((program[i] & 0xFF00) >> 8);
+                RAM[513 + i * 2] = (byte) (program[i] & 0x00FF);
+            }
+
+            ProgramCounter = 512;
+        }        
+
         private Random rndGenerator = new Random(Environment.TickCount);
-        public void ExecuteOpCode(ushort opCode)
+        public void Step()
         {
+            var opCode = (ushort) (RAM[ProgramCounter] << 8 | RAM[ProgramCounter +1]);
             switch (opCode & 0xF000) //top 4 bites
             {
                 case 0x0000:
@@ -213,6 +229,8 @@ namespace c_ip8
                 default:
                     throw new Exception("opcode not supported");
             }
+        
+        ProgramCounter += 2;
         }
     }
 }

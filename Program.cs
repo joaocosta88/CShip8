@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.IO;
 
 namespace c_ip8
@@ -7,16 +8,21 @@ namespace c_ip8
     {
         static void Main(string[] args)
         {
+            var cpu = new CPU();
             using (var reader = new BinaryReader(new FileStream("roms/heart_monitor.ch8", FileMode.Open)))
             {
-                var cpu = new CPU();
-                while (reader.BaseStream.Position != reader.BaseStream.Length)
+                var program = new List<ushort>();
+                while (reader.BaseStream.Position < reader.BaseStream.Length - 1)
                 {
-                    var opCode = (ushort)(reader.ReadByte() << 8 | reader.ReadByte());
-                    cpu.ExecuteOpCode(opCode);
+                    program.Add((ushort)(reader.ReadByte() << 8 | reader.ReadByte()));
                 }
 
-                Console.WriteLine("ended");
+                cpu.LoadProgram(program.ToArray());
+            }
+
+            while (true)
+            {
+                cpu.Step();
             }
         }
     }
