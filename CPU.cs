@@ -16,7 +16,7 @@ namespace c_ip8
         public byte DelayTimer;
         public byte SoundTimer;
         public byte Input;
-        public byte[,] Display = new byte[DISPLAY_WIDTH,DISPLAY_HEIGHT];
+        public byte[,] Display = new byte[DISPLAY_WIDTH, DISPLAY_HEIGHT];
 
         private Random rndGenerator = new Random(Environment.TickCount);
         public void ExecuteOpCode(ushort opCode)
@@ -28,7 +28,8 @@ namespace c_ip8
                     { //clear screen
                         for (int i = 0; i < DISPLAY_WIDTH; i++)
                         {
-                            for(int j = 0; j < DISPLAY_HEIGHT; j++) {
+                            for (int j = 0; j < DISPLAY_HEIGHT; j++)
+                            {
                                 Display[i, j] = 0;
                             }
                         }
@@ -126,23 +127,91 @@ namespace c_ip8
                     var py = opCode & 0x00F0 >> 4;
                     var spriteSize = opCode & 0x000F;
 
-                    for(int i = 0; i < spriteSize; i++) {
-                        var spriteToLoad = RAM[I+i];
+                    for (int i = 0; i < spriteSize; i++)
+                    {
+                        var spriteToLoad = RAM[I + i];
 
-                        for(int j = 0; j < 8; j++) {
+                        for (int j = 0; j < 8; j++)
+                        {
                             //7-j -> MSB is leftmost bit
                             //0x01 -> get a single bit value
-                            byte currentPixelToBeLoaded = (byte) ((spriteToLoad >> (7-j)) & 0x01);
-                            if (currentPixelToBeLoaded == 1 && Display[px + j, py] == 1) {
+                            byte currentPixelToBeLoaded = (byte)((spriteToLoad >> (7 - j)) & 0x01);
+                            if (currentPixelToBeLoaded == 1 && Display[px + j, py] == 1)
+                            {
                                 V[15] = 1;
                             }
-                            Display[px + j, py] = (byte) (Display[px + j, py] ^ currentPixelToBeLoaded);
+                            Display[px + j, py] = (byte)(Display[px + j, py] ^ currentPixelToBeLoaded);
                         }
                     }
                     break;
-                default:
-                    Console.WriteLine($"unknown opcode {opCode.ToString("X4")}");
+                case 0xE000:
+                    var inputOpCode = (byte)(opCode & 0x00FF);
+                    var x = (byte)((opCode & 0x0F00) >> 8);
+                    if (inputOpCode == 0x009E)
+                    {
+                        if (Input == V[x])
+                        {
+                            ProgramCounter += 2;
+                        }
+                    }
+                    else if (inputOpCode == 0x00A1)
+                    {
+                        if (Input != V[x])
+                        {
+                            ProgramCounter += 2;
+                        }
+                    }
                     break;
+                case 0xF000:
+                    x = (byte)((opCode & 0x0F00) >> 8);
+                    var lastNibbles = (byte)(opCode & 0x00FF);
+                    switch (lastNibbles)
+                    {
+                        case 0x07:
+                            V[x] = DelayTimer;
+                            break;
+                        case 0x0A:
+                            Console.WriteLine("Waiting for keypress");
+                            var k = Console.ReadKey();
+                            //handle input
+                            V[x] = Input;
+                            break;
+                        case 0x15:
+                            DelayTimer = V[x];
+                            break;
+                        case 0x18:
+                            SoundTimer = V[x];
+                            break;
+                        case 0x1E:
+                            I = (ushort)(I + V[x]);
+                            break;
+                        case 0x29:
+                            throw new Exception("not not handling system font");
+                        case 0x33:
+                            RAM[I] = (byte)(V[x] / 100);
+                            RAM[I + 1] = (byte)(V[x] % 100 / 10);
+                            RAM[I + 3] = (byte)(V[x] % 10);
+                            break;
+                        case 0x55:
+                            for (int i = 0; i < x; i++)
+                            {
+                                RAM[I + i] = V[i];
+                            }
+                            break;
+                        case 0x65:
+                            for (int i = 0; i < x; i++)
+                            {
+                                V[i] = RAM[I + 1];
+                            }
+                            break;
+
+                        default:
+                            throw new Exception("opcode not supported");
+                    }
+
+                    break;
+                default:
+                    throw new Exception("opcode not supported");
             }
         }
     }
