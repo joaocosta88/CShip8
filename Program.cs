@@ -11,10 +11,11 @@ namespace c_ip8
             var cpu = new CPU();
             using (var reader = new BinaryReader(new FileStream("roms/heart_monitor.ch8", FileMode.Open)))
             {
-                var program = new List<ushort>();
+                var program = new List<byte>();
                 while (reader.BaseStream.Position < reader.BaseStream.Length - 1)
                 {
-                    program.Add((ushort)(reader.ReadByte() << 8 | reader.ReadByte()));
+                    //program.Add((ushort)(reader.ReadByte() << 8 | reader.ReadByte()));
+                    program.Add(reader.ReadByte());
                 }
 
                 cpu.LoadProgram(program.ToArray());
@@ -23,6 +24,7 @@ namespace c_ip8
             while (true)
             {
                 cpu.Step();
+                cpu.DrawDisplay();
             }
         }
     }

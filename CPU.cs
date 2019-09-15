@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
 
 namespace c_ip8
 {
@@ -18,25 +19,29 @@ namespace c_ip8
         public byte Input;
         public byte[,] Display = new byte[DISPLAY_WIDTH, DISPLAY_HEIGHT];
 
-        public void LoadProgram(ushort[] program) {
+        public void LoadProgram(byte[] program)
+        {
             RAM = new byte[4096];
-            
-            for(int i = 0; i < program.Length; i++) {
-                //according to documentation, chip 8 start at memory location 512
-                //the positions before 512 were reserved to the original interpreter
 
-                // position is multiplied by two since each instruction is two bytes
-                RAM[512 + i * 2]  = (byte) ((program[i] & 0xFF00) >> 8);
-                RAM[513 + i * 2] = (byte) (program[i] & 0x00FF);
+            for (int i = 0; i < program.Length; i++)
+            {
+                // //according to documentation, chip 8 start at memory location 512
+                // //the positions before 512 were reserved to the original interpreter
+
+                // // position is multiplied by two since each instruction is two bytes
+                // RAM[512 + i * 2] = (byte)((program[i] & 0xFF00) >> 8);
+                // RAM[513 + i * 2] = (byte)(program[i] & 0x00FF);
+
+                RAM[512 + i] = program[i];
             }
 
             ProgramCounter = 512;
-        }        
+        }
 
         private Random rndGenerator = new Random(Environment.TickCount);
         public void Step()
         {
-            var opCode = (ushort) (RAM[ProgramCounter] << 8 | RAM[ProgramCounter +1]);
+            var opCode = (ushort)(RAM[ProgramCounter] << 8 | RAM[ProgramCounter + 1]);
             switch (opCode & 0xF000) //top 4 bites
             {
                 case 0x0000:
@@ -63,22 +68,22 @@ namespace c_ip8
                     ProgramCounter = (ushort)(opCode & 0x0FFF);
                     break;
                 case 0x3000:
-                    if (V[opCode & 0x0F00 >> 8] == (opCode & 0x00FF))
+                    if (V[(opCode & 0x0F00) >> 8] == (opCode & 0x00FF))
                         ProgramCounter += 2;
                     break;
                 case 0x4000:
-                    if (V[opCode & 0x0F00 >> 8] != (opCode & 0x00FF))
+                    if (V[(opCode & 0x0F00) >> 8] != (opCode & 0x00FF))
                         ProgramCounter += 2;
                     break;
                 case 0x5000:
-                    if (V[opCode & 0x0F00 >> 8] == V[opCode & 0x00F0 >> 4])
+                    if (V[(opCode & 0x0F00) >> 8] == V[opCode & 0x00F0 >> 4])
                         ProgramCounter += 2;
                     break;
                 case 0x6000:
-                    V[opCode & 0x0F00 >> 8] = (byte)(opCode & 0x00FF);
+                    V[(opCode & 0x0F00) >> 8] = (byte)(opCode & 0x00FF);
                     break;
                 case 0x7000:
-                    V[opCode & 0x0F00 >> 8] += (byte)(opCode & 0x00FF);
+                    V[(opCode & 0x0F00) >> 8] += (byte)(opCode & 0x00FF);
                     break;
                 case 0x8000:
                     var Vx = (byte)(opCode & 0x0F00 >> 8);
@@ -124,7 +129,7 @@ namespace c_ip8
                     }
                     break;
                 case 0x9000:
-                    if (V[opCode & 0x0F00 >> 8] != V[opCode & 0x00F0 >> 4])
+                    if (V[(opCode & 0x0F00) >> 8] != V[opCode & 0x00F0 >> 4])
                         ProgramCounter += 2;
                     break;
                 case 0xA000:
@@ -139,8 +144,6 @@ namespace c_ip8
                     break;
                 case 0xD000: //TODO: this is probably wrong
                     V[15] = 0;
-                    var px = opCode & 0x0F00 >> 8;
-                    var py = opCode & 0x00F0 >> 4;
                     var spriteSize = opCode & 0x000F;
 
                     for (int i = 0; i < spriteSize; i++)
@@ -149,14 +152,18 @@ namespace c_ip8
 
                         for (int j = 0; j < 8; j++)
                         {
+                            var px = V[((opCode & 0x0F00) >> 8)] + i  % DISPLAY_WIDTH;
+                            var py = V[((opCode & 0x00F0) >> 4)] + j % DISPLAY_HEIGHT;
                             //7-j -> MSB is leftmost bit
                             //0x01 -> get a single bit value
-                            byte currentPixelToBeLoaded = (byte)((spriteToLoad >> (7 - j)) & 0x01);
-                            if (currentPixelToBeLoaded == 1 && Display[px + j, py] == 1)
-                            {
+                            var spriteBit = ((spriteToLoad >> (7 - j)) & 1);
+                            var oldBit = Display[px, py];
+                            var newBit = spriteBit ^ oldBit;
+                            Display[px, py] = (byte)newBit;
+
+					        if (oldBit != 0 && newBit == 0)                            {
                                 V[15] = 1;
                             }
-                            Display[px + j, py] = (byte)(Display[px + j, py] ^ currentPixelToBeLoaded);
                         }
                     }
                     break;
@@ -229,8 +236,29 @@ namespace c_ip8
                 default:
                     throw new Exception("opcode not supported");
             }
-        
-        ProgramCounter += 2;
+
+            ProgramCounter += 2;
+        }
+
+        public void DrawDisplay()
+        {
+            Console.Clear();
+            Console.SetCursorPosition(0,0);
+            for (int i = 0; i < 64; i++)
+            {
+                for (int j = 0; j < 32; j++)
+                {
+                    if (Display[i, j] == 1) {
+                        Console.Write("*");
+                    }
+                    else {
+                         Console.Write(" ");
+                    }
+                }
+                                    Console.WriteLine();
+
+            }
+            Thread.Sleep(50);
         }
     }
 }
