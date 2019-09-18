@@ -14,7 +14,6 @@ namespace c_ip8
                 var program = new List<byte>();
                 while (reader.BaseStream.Position < reader.BaseStream.Length - 1)
                 {
-                    //program.Add((ushort)(reader.ReadByte() << 8 | reader.ReadByte()));
                     program.Add(reader.ReadByte());
                 }
 

@@ -17,7 +17,7 @@ namespace c_ip8
         public byte DelayTimer;
         public byte SoundTimer;
         public byte Input;
-        public byte[,] Display = new byte[DISPLAY_WIDTH, DISPLAY_HEIGHT];
+        public bool[,] Display = new bool[DISPLAY_WIDTH, DISPLAY_HEIGHT];
 
         public void LoadProgram(byte[] program)
         {
@@ -25,33 +25,29 @@ namespace c_ip8
 
             for (int i = 0; i < program.Length; i++)
             {
-                // //according to documentation, chip 8 start at memory location 512
-                // //the positions before 512 were reserved to the original interpreter
-
-                // // position is multiplied by two since each instruction is two bytes
-                // RAM[512 + i * 2] = (byte)((program[i] & 0xFF00) >> 8);
-                // RAM[513 + i * 2] = (byte)(program[i] & 0x00FF);
-
                 RAM[512 + i] = program[i];
             }
 
             ProgramCounter = 512;
         }
 
-        private Random rndGenerator = new Random(Environment.TickCount);
+        private Random rndGenerator = new Random(Environment.TickCount);        
+
         public void Step()
         {
             var opCode = (ushort)(RAM[ProgramCounter] << 8 | RAM[ProgramCounter + 1]);
-            switch (opCode & 0xF000) //top 4 bites
+            var opCodeData = CreateOpCodeData(opCode);
+
+            switch (opCodeData.MSB) //top 4 bites
             {
-                case 0x0000:
+                case 0x0:
                     if (opCode == 0x00E0)
                     { //clear screen
                         for (int i = 0; i < DISPLAY_WIDTH; i++)
                         {
                             for (int j = 0; j < DISPLAY_HEIGHT; j++)
                             {
-                                Display[i, j] = 0;
+                                Display[i, j] = false;
                             }
                         }
                     }
@@ -60,32 +56,32 @@ namespace c_ip8
                         ProgramCounter = Stack.Pop();
                     }
                     break;
-                case 0x1000:
+                case 0x1:
                     ProgramCounter = (ushort)(opCode & 0x0FFF);
                     break;
-                case 0x2000:
+                case 0x2:
                     Stack.Push(ProgramCounter);
                     ProgramCounter = (ushort)(opCode & 0x0FFF);
                     break;
-                case 0x3000:
+                case 0x3:
                     if (V[(opCode & 0x0F00) >> 8] == (opCode & 0x00FF))
                         ProgramCounter += 2;
                     break;
-                case 0x4000:
+                case 0x4:
                     if (V[(opCode & 0x0F00) >> 8] != (opCode & 0x00FF))
                         ProgramCounter += 2;
                     break;
-                case 0x5000:
+                case 0x5:
                     if (V[(opCode & 0x0F00) >> 8] == V[opCode & 0x00F0 >> 4])
                         ProgramCounter += 2;
                     break;
-                case 0x6000:
+                case 0x6:
                     V[(opCode & 0x0F00) >> 8] = (byte)(opCode & 0x00FF);
                     break;
-                case 0x7000:
+                case 0x7:
                     V[(opCode & 0x0F00) >> 8] += (byte)(opCode & 0x00FF);
                     break;
-                case 0x8000:
+                case 0x8:
                     var Vx = (byte)(opCode & 0x0F00 >> 8);
                     var Vy = (byte)(opCode & 0x00F0 >> 4);
                     switch (opCode & 0x000F) //lowest 4 bites
@@ -128,21 +124,21 @@ namespace c_ip8
                             break;
                     }
                     break;
-                case 0x9000:
+                case 0x9:
                     if (V[(opCode & 0x0F00) >> 8] != V[opCode & 0x00F0 >> 4])
                         ProgramCounter += 2;
                     break;
-                case 0xA000:
+                case 0xA:
                     I = (ushort)(opCode & 0x0FFF);
                     break;
-                case 0xB000:
+                case 0xB:
                     ProgramCounter = (ushort)(V[0] + (opCode & 0x0FFF));
                     break;
-                case 0xC000:
+                case 0xC:
                     var rnd = rndGenerator.Next(256);
                     V[opCode & 0x0F00] = (byte)(rnd & (opCode & 0x00FF));
                     break;
-                case 0xD000: //TODO: this is probably wrong
+                case 0xD: //TODO: this is probably wrong
                     V[15] = 0;
                     var spriteSize = opCode & 0x000F;
 
@@ -152,22 +148,25 @@ namespace c_ip8
 
                         for (int j = 0; j < 8; j++)
                         {
-                            var px = V[((opCode & 0x0F00) >> 8)] + i  % DISPLAY_WIDTH;
-                            var py = V[((opCode & 0x00F0) >> 4)] + j % DISPLAY_HEIGHT;
+                            
+                            var px = (V[((opCode & 0x0F00) >> 8)] + j) % DISPLAY_WIDTH;
+                            var py = (V[((opCode & 0x00F0) >> 4)] + i) % DISPLAY_HEIGHT;
+
                             //7-j -> MSB is leftmost bit
                             //0x01 -> get a single bit value
                             var spriteBit = ((spriteToLoad >> (7 - j)) & 1);
-                            var oldBit = Display[px, py];
+                            var oldBit = Display[px, py] ? 1 : 0;
                             var newBit = spriteBit ^ oldBit;
-                            Display[px, py] = (byte)newBit;
+                            Display[px, py] = (newBit == 1 ? true : false);
 
-					        if (oldBit != 0 && newBit == 0)                            {
+                            if (oldBit != 0 && newBit == 0)
+                            {
                                 V[15] = 1;
                             }
                         }
                     }
                     break;
-                case 0xE000:
+                case 0xE:
                     var inputOpCode = (byte)(opCode & 0x00FF);
                     var x = (byte)((opCode & 0x0F00) >> 8);
                     if (inputOpCode == 0x009E)
@@ -185,7 +184,7 @@ namespace c_ip8
                         }
                     }
                     break;
-                case 0xF000:
+                case 0xF:
                     x = (byte)((opCode & 0x0F00) >> 8);
                     var lastNibbles = (byte)(opCode & 0x00FF);
                     switch (lastNibbles)
@@ -229,12 +228,12 @@ namespace c_ip8
                             break;
 
                         default:
-                            throw new Exception("opcode not supported");
+                            throw new Exception($"opcode not supported - {opCode}");
                     }
 
                     break;
                 default:
-                    throw new Exception("opcode not supported");
+                    throw new Exception($"opcode not supported - {opCode}");
             }
 
             ProgramCounter += 2;
@@ -242,23 +241,38 @@ namespace c_ip8
 
         public void DrawDisplay()
         {
-            Console.Clear();
-            Console.SetCursorPosition(0,0);
-            for (int i = 0; i < 64; i++)
-            {
-                for (int j = 0; j < 32; j++)
-                {
-                    if (Display[i, j] == 1) {
-                        Console.Write("*");
-                    }
-                    else {
-                         Console.Write(" ");
-                    }
-                }
-                                    Console.WriteLine();
+            // Console.Clear();
+            // Console.SetCursorPosition(0, 0);
+            // for (int y = 0; y < DISPLAY_HEIGHT; y++)
+            // {
+            //     for (int x = 0; x < DISPLAY_WIDTH; x++)
+            //     {
+            //         if (Display[x, y])
+            //         {
+            //             Console.Write("*");
+            //         }
+            //         else
+            //         {
+            //             Console.Write(" ");
+            //         }
+            //     }
+            //     Console.WriteLine();
 
-            }
-            Thread.Sleep(50);
+            // }
+            // Thread.Sleep(500);
+        }
+
+        private static OpCodeData CreateOpCodeData(ushort opCode) {
+            return new OpCodeData()
+			{
+				OriginalOpCode = opCode,
+                MSB = (byte)((opCode & 0xF000) >> 12),
+				NNN = (ushort)(opCode & 0x0FFF),
+				NN = (byte)(opCode & 0x00FF),
+				N = (byte)(opCode & 0x000F),
+				X = (byte)((opCode & 0x0F00) >> 8),
+				Y = (byte)((opCode & 0x00F0) >> 4),
+			};
         }
     }
 }
