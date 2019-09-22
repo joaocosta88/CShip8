@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Text;
 using System.Threading;
 
 namespace c_ip8
@@ -16,9 +18,9 @@ namespace c_ip8
         public Stack<ushort> Stack = new Stack<ushort>();
         public byte DelayTimer;
         public byte SoundTimer;
-        public byte Input;
+        public HashSet<byte> PressedKeys = new HashSet<byte>();
         public bool[,] Display = new bool[DISPLAY_WIDTH, DISPLAY_HEIGHT];
-
+        bool needsRedraw = false;
         public void LoadProgram(byte[] program)
         {
             RAM = new byte[4096];
@@ -31,18 +33,18 @@ namespace c_ip8
             ProgramCounter = 512;
         }
 
-        private Random rndGenerator = new Random(Environment.TickCount);        
+        private Random rndGenerator = new Random(Environment.TickCount);
 
         public void Step()
         {
-            var opCode = (ushort)(RAM[ProgramCounter] << 8 | RAM[ProgramCounter + 1]);
-            var opCodeData = CreateOpCodeData(opCode);
+            var opCode = (ushort)(RAM[ProgramCounter++] << 8 | RAM[ProgramCounter++]);
+            var data = CreateOpCodeData(opCode);
 
-            switch (opCodeData.MSB) //top 4 bites
+            switch (data.MSB) //top 4 bites
             {
                 case 0x0:
-                    if (opCode == 0x00E0)
-                    { //clear screen
+                    if (data.NN == 0xE0)
+                    {
                         for (int i = 0; i < DISPLAY_WIDTH; i++)
                         {
                             for (int j = 0; j < DISPLAY_HEIGHT; j++)
@@ -51,73 +53,70 @@ namespace c_ip8
                             }
                         }
                     }
-                    else if (opCode == 0x00EE)
+                    else if (data.NN == 0xEE)
                     {
                         ProgramCounter = Stack.Pop();
                     }
                     break;
                 case 0x1:
-                    ProgramCounter = (ushort)(opCode & 0x0FFF);
+                    ProgramCounter = data.NNN;
                     break;
                 case 0x2:
                     Stack.Push(ProgramCounter);
-                    ProgramCounter = (ushort)(opCode & 0x0FFF);
+                    ProgramCounter = data.NNN;
                     break;
                 case 0x3:
-                    if (V[(opCode & 0x0F00) >> 8] == (opCode & 0x00FF))
+                    if (V[data.X] == data.NN)
                         ProgramCounter += 2;
                     break;
                 case 0x4:
-                    if (V[(opCode & 0x0F00) >> 8] != (opCode & 0x00FF))
+                    if (V[data.X] != data.NN)
                         ProgramCounter += 2;
                     break;
                 case 0x5:
-                    if (V[(opCode & 0x0F00) >> 8] == V[opCode & 0x00F0 >> 4])
+                    if (V[data.X] == V[data.Y])
                         ProgramCounter += 2;
                     break;
                 case 0x6:
-                    V[(opCode & 0x0F00) >> 8] = (byte)(opCode & 0x00FF);
+                    V[data.X] = data.NN;
                     break;
                 case 0x7:
-                    V[(opCode & 0x0F00) >> 8] += (byte)(opCode & 0x00FF);
+                    V[data.X] += data.NN;
                     break;
                 case 0x8:
-                    var Vx = (byte)(opCode & 0x0F00 >> 8);
-                    var Vy = (byte)(opCode & 0x00F0 >> 4);
-                    switch (opCode & 0x000F) //lowest 4 bites
+                    switch (data.N)
                     {
-                        case 0x0000:
-                            V[Vx] = V[Vy];
+                        case 0x0:
+                            V[data.X] = V[data.Y];
                             break;
-                        case 0x0001:
-                            V[Vx] = (byte)(V[Vx] & V[Vy]);
+                        case 0x1:
+                            V[data.X] |= V[data.Y];
                             break;
-                        case 0x0002:
-                            V[Vx] = (byte)(V[Vx] | V[Vy]);
+                        case 0x2:
+                            V[data.X] &= V[data.Y];
                             break;
-                        case 0x0003:
-                            V[Vx] = (byte)(V[Vx] ^ V[Vy]);
+                        case 0x3:
+                            V[data.X] ^= V[data.Y];
                             break;
-                        case 0x0004:
-                            var sum = (byte)(V[Vx] + V[Vy]);
-                            V[Vx] = (byte)(sum & 0x00FF);
-                            V[15] = (byte)(sum > 255 ? 1 : 0); //carry flag
+                        case 0x4:
+                            V[15] = (byte)(V[data.X] + V[data.Y] > 0xFF ? 1 : 0);
+                            V[data.X] += V[data.Y];
                             break;
-                        case 0x0005:
-                            V[15] = (byte)(V[Vx] > V[Vy] ? 1 : 0);
-                            V[Vx] = (byte)((V[Vx] - V[Vy]) & 0x00FF);
+                        case 0x5:
+                            V[15] = (byte)(V[data.X] > V[data.Y] ? 1 : 0);
+                            V[data.X] -= V[data.Y];
                             break;
-                        case 0x0006:
-                            V[15] = (byte)((V[Vx] & 0x0001) == 1 ? 1 : 0);
-                            V[Vx] = (byte)(V[Vx] >> 1);
+                        case 0x6:
+                            V[15] = (byte)((V[data.X] & 0x1) == 1 ? 1 : 0);
+                            V[data.X] = (byte)(V[data.X] >> 1);
                             break;
-                        case 0x0007:
-                            V[15] = (byte)(V[Vy] > V[Vx] ? 1 : 0);
-                            V[Vx] = (byte)((V[Vy] - V[Vx]) & 0x00FF);
+                        case 0x7:
+                            V[15] = (byte)(V[data.Y] > V[data.X] ? 1 : 0);
+                            V[data.Y] -= V[data.X];
                             break;
-                        case 0x000E:
-                            V[15] = (byte)((V[Vx] & 0x1000) == 1 ? 1 : 0);
-                            V[Vx] = (byte)(V[Vx] << 1);
+                        case 0xE:
+                            V[15] = (byte)((V[data.X] & 0xF) == 1 ? 1 : 0);
+                            V[data.X] = (byte)(V[data.X] << 1);
                             break;
                         default:
                             Console.WriteLine($"unknown opcode {opCode.ToString("X4")}");
@@ -125,103 +124,85 @@ namespace c_ip8
                     }
                     break;
                 case 0x9:
-                    if (V[(opCode & 0x0F00) >> 8] != V[opCode & 0x00F0 >> 4])
+                    if (V[data.X] != V[data.Y])
                         ProgramCounter += 2;
                     break;
                 case 0xA:
-                    I = (ushort)(opCode & 0x0FFF);
+                    I = data.NNN;
                     break;
                 case 0xB:
-                    ProgramCounter = (ushort)(V[0] + (opCode & 0x0FFF));
+                    ProgramCounter = (ushort)(V[0] + data.NNN);
                     break;
                 case 0xC:
-                    var rnd = rndGenerator.Next(256);
-                    V[opCode & 0x0F00] = (byte)(rnd & (opCode & 0x00FF));
+                    var rnd = rndGenerator.Next(0, 256);
+                    V[data.X] = (byte)(rnd & data.NN);
                     break;
                 case 0xD: //TODO: this is probably wrong
-                    V[15] = 0;
-                    var spriteSize = opCode & 0x000F;
+                    var startX = V[data.X];
+                    var startY = V[data.Y];
 
-                    for (int i = 0; i < spriteSize; i++)
+                    V[0xF] = 0;
+                    for (var i = 0; i < data.N; i++)
                     {
-                        var spriteToLoad = RAM[I + i];
+                        var spriteLine = RAM[I + i]; // A line of the sprite to render
 
-                        for (int j = 0; j < 8; j++)
+                        for (var bit = 0; bit < 8; bit++)
                         {
-                            
-                            var px = (V[((opCode & 0x0F00) >> 8)] + j) % DISPLAY_WIDTH;
-                            var py = (V[((opCode & 0x00F0) >> 4)] + i) % DISPLAY_HEIGHT;
+                            var x = (startX + bit) % DISPLAY_WIDTH;
+                            var y = (startY + i) % DISPLAY_HEIGHT;
 
-                            //7-j -> MSB is leftmost bit
-                            //0x01 -> get a single bit value
-                            var spriteBit = ((spriteToLoad >> (7 - j)) & 1);
-                            var oldBit = Display[px, py] ? 1 : 0;
-                            var newBit = spriteBit ^ oldBit;
-                            Display[px, py] = (newBit == 1 ? true : false);
+                            var spriteBit = ((spriteLine >> (7 - bit)) & 1);
+                            var oldBit = Display[x, y] ? 1 : 0;
 
+                            if (oldBit != spriteBit)
+                                needsRedraw = true;
+
+                            // New bit is XOR of existing and new.
+                            var newBit = oldBit ^ spriteBit;
+                            Display[x, y] = newBit != 0;
+
+                            // If we wiped out a pixel, set flag for collission.
                             if (oldBit != 0 && newBit == 0)
-                            {
-                                V[15] = 1;
-                            }
-                        }
-                    }
-                    break;
-                case 0xE:
-                    var inputOpCode = (byte)(opCode & 0x00FF);
-                    var x = (byte)((opCode & 0x0F00) >> 8);
-                    if (inputOpCode == 0x009E)
-                    {
-                        if (Input == V[x])
-                        {
-                            ProgramCounter += 2;
-                        }
-                    }
-                    else if (inputOpCode == 0x00A1)
-                    {
-                        if (Input != V[x])
-                        {
-                            ProgramCounter += 2;
+                                V[0xF] = 1;
                         }
                     }
                     break;
                 case 0xF:
-                    x = (byte)((opCode & 0x0F00) >> 8);
-                    var lastNibbles = (byte)(opCode & 0x00FF);
-                    switch (lastNibbles)
+                    switch (data.NN)
                     {
                         case 0x07:
-                            V[x] = DelayTimer;
+                            V[data.X] = DelayTimer;
                             break;
-                        case 0x0A:
-                            Console.WriteLine("Waiting for keypress");
-                            var k = Console.ReadKey();
-                            //handle input
-                            V[x] = Input;
+                        case 0x0A: //waits for key by looping current instruction
+                            if (PressedKeys.Count == 0)
+                                ProgramCounter -= 2;
+
+                            V[data.X] = PressedKeys.First();
                             break;
                         case 0x15:
-                            DelayTimer = V[x];
+                            DelayTimer = V[data.X];
                             break;
                         case 0x18:
-                            SoundTimer = V[x];
+                            SoundTimer = V[data.X];
                             break;
                         case 0x1E:
-                            I = (ushort)(I + V[x]);
+                            I += V[data.X];
                             break;
                         case 0x29:
                             throw new Exception("not not handling system font");
                         case 0x33:
-                            RAM[I] = (byte)(V[x] / 100);
-                            RAM[I + 1] = (byte)(V[x] % 100 / 10);
-                            RAM[I + 3] = (byte)(V[x] % 10);
+                            RAM[I] = (byte)((V[data.X] / 100) % 10);
+                            RAM[I + 1] = (byte)((V[data.X] / 10) / 10);
+                            RAM[I + 2] = (byte)(V[data.X] % 10);
                             break;
                         case 0x55:
-                            for (int i = 0; i < x; i++)
+                            for (int i = 0; i <= data.X; i++)
                             {
                                 RAM[I + i] = V[i];
                             }
                             break;
                         case 0x65:
-                            for (int i = 0; i < x; i++)
+                            for (int i = 0; i <= data.X; i++)
                             {
                                 V[i] = RAM[I + 1];
                             }
@@ -236,43 +217,50 @@ namespace c_ip8
                     throw new Exception($"opcode not supported - {opCode}");
             }
 
-            ProgramCounter += 2;
+            // ProgramCounter += 2;
         }
 
         public void DrawDisplay()
         {
-            // Console.Clear();
-            // Console.SetCursorPosition(0, 0);
-            // for (int y = 0; y < DISPLAY_HEIGHT; y++)
-            // {
-            //     for (int x = 0; x < DISPLAY_WIDTH; x++)
-            //     {
-            //         if (Display[x, y])
-            //         {
-            //             Console.Write("*");
-            //         }
-            //         else
-            //         {
-            //             Console.Write(" ");
-            //         }
-            //     }
-            //     Console.WriteLine();
+            if (!needsRedraw)
+                return;
+            needsRedraw = false;
 
-            // }
-            // Thread.Sleep(500);
+            Console.Clear();
+            Console.SetCursorPosition(0, 0);
+            StringBuilder sb;
+            for (int y = 0; y < DISPLAY_HEIGHT; y++)
+            {
+                sb = new StringBuilder();
+                for (int x = 0; x < DISPLAY_WIDTH; x++)
+                {
+                    if (Display[x, y])
+                    {
+                        sb.Append("*");
+                    }
+                    else
+                    {
+                        sb.Append(" ");
+                    }
+                }
+                
+                Console.WriteLine(sb.ToString());
+            }
+            Thread.Sleep(50);
         }
 
-        private static OpCodeData CreateOpCodeData(ushort opCode) {
+        private static OpCodeData CreateOpCodeData(ushort opCode)
+        {
             return new OpCodeData()
-			{
-				OriginalOpCode = opCode,
+            {
+                OriginalOpCode = opCode,
                 MSB = (byte)((opCode & 0xF000) >> 12),
-				NNN = (ushort)(opCode & 0x0FFF),
-				NN = (byte)(opCode & 0x00FF),
-				N = (byte)(opCode & 0x000F),
-				X = (byte)((opCode & 0x0F00) >> 8),
-				Y = (byte)((opCode & 0x00F0) >> 4),
-			};
+                NNN = (ushort)(opCode & 0x0FFF),
+                NN = (byte)(opCode & 0x00FF),
+                N = (byte)(opCode & 0x000F),
+                X = (byte)((opCode & 0x0F00) >> 8),
+                Y = (byte)((opCode & 0x00F0) >> 4),
+            };
         }
     }
 }
