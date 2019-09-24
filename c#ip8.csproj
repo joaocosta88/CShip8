@@ -6,5 +6,9 @@
     <RootNamespace>c_ip8</RootNamespace>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
-
+<ItemGroup>
+  <Reference Include="SDL2">
+    <HintPath>libs/SDL2-CS.dll</HintPath>
+  </Reference>
+</ItemGroup>
 </Project>
