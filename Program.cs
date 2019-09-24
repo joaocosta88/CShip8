@@ -9,7 +9,9 @@ namespace c_ip8
         static void Main(string[] args)
         {
             var cpu = new CPU();
-            using (var reader = new BinaryReader(new FileStream("roms/games/TETRIS", FileMode.Open)))
+
+            cpu.LoadFont();
+            using (var reader = new BinaryReader(new FileStream("roms/games/PONG", FileMode.Open)))
             {
                 var program = new List<byte>();
                 while (reader.BaseStream.Position < reader.BaseStream.Length - 1)
