@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Text;
 using System.Threading;
@@ -35,8 +36,23 @@ namespace c_ip8
 
         private Random rndGenerator = new Random(Environment.TickCount);
 
+        private Stopwatch sw = new Stopwatch(); 
         public void Step()
         {
+            if (!sw.IsRunning) 
+            {
+                sw.Start();
+            }
+            if (sw.ElapsedMilliseconds > 16) 
+            {
+                if (DelayTimer > 0)
+                    DelayTimer--;
+                if (SoundTimer > 0)
+                    SoundTimer--;
+
+                sw.Restart();
+            }
+
             var opCode = (ushort)(RAM[ProgramCounter++] << 8 | RAM[ProgramCounter++]);
             var data = CreateOpCodeData(opCode);
 
@@ -167,6 +183,13 @@ namespace c_ip8
                         }
                     }
                     break;
+                case 0xE:
+                    if ((data.NN == 0x9E && PressedKeys.Contains(V[data.X]))
+                        || (data.NN == 0xA1 && !PressedKeys.Contains(V[data.X])))
+                    {
+                        ProgramCounter += 2;
+                    }
+                    break;
                 case 0xF:
                     switch (data.NN)
                     {
@@ -189,7 +212,8 @@ namespace c_ip8
                             I += V[data.X];
                             break;
                         case 0x29:
-                            throw new Exception("not not handling system font");
+                            // throw new Exception("not not handling system font");
+                            break;
                         case 0x33:
                             RAM[I] = (byte)((V[data.X] / 100) % 10);
                             RAM[I + 1] = (byte)((V[data.X] / 10) / 10);
@@ -243,7 +267,7 @@ namespace c_ip8
                         sb.Append(" ");
                     }
                 }
-                
+
                 Console.WriteLine(sb.ToString());
             }
             Thread.Sleep(50);
