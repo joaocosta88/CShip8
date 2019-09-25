@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
+using SDL2;
 
 namespace c_ip8
 {
@@ -8,7 +9,7 @@ namespace c_ip8
     {
         static void Main(string[] args)
         {
-            var cpu = new CPU();
+               var cpu = new CPU();
 
             cpu.LoadFont();
             using (var reader = new BinaryReader(new FileStream("roms/games/PONG", FileMode.Open)))
